@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Posts on Cloud-Ham Blog</title>
+    <link>https://Cloud-Ham.github.io/posts/</link>
+    <description>Recent content in Posts on Cloud-Ham Blog</description>
+    <generator>Hugo -- gohugo.io</generator>
+    <language>en-us</language>
+    <lastBuildDate>Thu, 08 Apr 2021 17:39:40 -0400</lastBuildDate><atom:link href="https://Cloud-Ham.github.io/posts/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Analysis: Azure Custom Script Extension (Windows)</title>
+      <link>https://Cloud-Ham.github.io/posts/analysis-azure-custom-script-extension-windows/</link>
+      <pubDate>Thu, 08 Apr 2021 17:39:40 -0400</pubDate>
+      
+      <guid>https://Cloud-Ham.github.io/posts/analysis-azure-custom-script-extension-windows/</guid>
+      <description>Today we’re looking at Azure Custom Script Extensions. These are Azure VM extensions that will run a PowerShell script, or sh script for Linux, on a VM. For most of the blog, Custom Script Extensions will be written as CSEs for short. We’re going to be looking at a few things throughout this, such as:
+ How does it work? How do we find out what script is running? Can we find deleted CSEs?</description>
+    </item>
+    
+  </channel>
+</rss>

